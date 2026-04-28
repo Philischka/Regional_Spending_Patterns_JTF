@@ -34,11 +34,20 @@ os.makedirs(grouped_dir, exist_ok=True)
 col_code = "NUTS 2 Code"
 col_share = "Index Economic Exposure"
 
+index_vars = [
+    "Index Economic Exposure",
+    "Index High Carbon Employment",
+    "Ranking National Energy Mix 2019 Share High Carbon",
+    "Ranking Emission Intensity / GDP for selected sectors"
+]
+
 vuln = pd.read_excel(vuln_path)
-vuln[col_share] = pd.to_numeric(vuln[col_share], errors="coerce")
+for v in index_vars:
+    vuln[v] = pd.to_numeric(vuln[v], errors="coerce")
+
 vuln["high_carbon_jobs"] = vuln[col_share]
 
-vuln_small = vuln[[col_code, col_share, "high_carbon_jobs"]].copy()
+vuln_small = vuln[[col_code] + index_vars + ["high_carbon_jobs"]].copy()
 
 # ================================================================
 # 2. LOAD JTF FLOWS AND KEEP 'OTHER' AGAIN
@@ -789,62 +798,145 @@ plt.savefig(os.path.join(grouped_dir, "grouped_policy_heatmap_10pct_share.png"),
 plt.close()
 
 # ================================================================
-# 13. TABELLE MIT DEZILEN UND DURCHSCHNITTLICHEN POLICIES
+# 13. TABLES: DECILES AND AVERAGE NUMBER OF POLICY FIELDS
 # ================================================================
 
-# Wir erstellen eine neue Tabelle mit den Dezilen und der durchschnittlichen Anzahl an investierten Policy-Feldern
+def make_decile_avg_policy_table(index_col, output_filename):
+    """
+    Creates a two-column table:
+    Decile | Avg. # Policies
+    based on deciles of the selected regional index variable.
+    """
 
-table_deciles = policy_group10[["group10", "avg_num_policies"]].copy()
-table_deciles["avg_num_policies"] = table_deciles["avg_num_policies"].round(2)
+    # Region-level values for selected index
+    region_values = (
+        matched[["region_code", index_col]]
+        .drop_duplicates()
+        .dropna(subset=[index_col])
+        .copy()
+    )
 
-# Wir fügen eine Funktion hinzu, um die Zellen basierend auf dem Wert in der rechten Spalte zu färben
-def colorize_right_column(value):
-    # Farbskala basierend auf dem Wert der rechten Spalte
-    return plt.cm.Blues((value - table_deciles["avg_num_policies"].min()) / 
-                        (table_deciles["avg_num_policies"].max() - table_deciles["avg_num_policies"].min()))
+    region_values = region_values[region_values[index_col] > 0]
 
-# Tabelle zur Darstellung
-fig_deciles, ax_deciles = plt.subplots(figsize=(6, 4))
+    # Deciles for selected index
+    decile_order = [
+        "0–10%", "10–20%", "20–30%", "30–40%", "40–50%",
+        "50–60%", "60–70%", "70–80%", "80–90%", "90–100%"
+    ]
 
-# Zelltext vorbereiten
-cell_text_deciles = []
-for row in table_deciles.itertuples():
-    cell_text_deciles.append([row.group10, f"{row.avg_num_policies:.2f}"])
+    region_values["decile"] = pd.qcut(
+        region_values[index_col].rank(method="first"),
+        q=10,
+        labels=decile_order
+    )
 
-# Tabelle erzeugen
-tbl_deciles = ax_deciles.table(
-    cellText=cell_text_deciles,
-    colLabels=["Decile", "Avg. # Policies"],
-    cellLoc="center",
-    loc="center"
+    decile_order = [
+        "0–10%", "10–20%", "20–30%", "30–40%", "40–50%",
+        "50–60%", "60–70%", "70–80%", "80–90%", "90–100%"
+    ]
+
+    # Policy presence per region
+    policy_presence = (
+        matched.groupby(["region_code", "Policy Category Title"], as_index=False)
+        .agg(total_amount_sum=("total_amount", "sum"))
+    )
+
+    policy_presence["has_amount"] = policy_presence["total_amount_sum"] > 0
+
+    policy_presence = (
+        policy_presence
+        .pivot(index="region_code", columns="Policy Category Title", values="has_amount")
+        .fillna(False)
+    )
+
+    policy_presence["num_invested"] = policy_presence.sum(axis=1)
+
+    # Average number of policy fields per decile
+    table_deciles = (
+        policy_presence[["num_invested"]]
+        .merge(region_values[["region_code", "decile"]], on="region_code", how="inner")
+        .groupby("decile", observed=False)
+        .agg(avg_num_policies=("num_invested", "mean"))
+        .reindex(decile_order)
+        .reset_index()
+    )
+
+    table_deciles = table_deciles.rename(columns={"index": "decile"})
+    table_deciles["avg_num_policies"] = table_deciles["avg_num_policies"].round(2)
+
+    # Color function
+    min_val = table_deciles["avg_num_policies"].min()
+    max_val = table_deciles["avg_num_policies"].max()
+
+    def colorize_right_column(value):
+        if max_val == min_val:
+            return "#ffffff"
+        norm = (value - min_val) / (max_val - min_val)
+        return plt.cm.Blues(norm)
+
+    # Create table
+    fig_deciles, ax_deciles = plt.subplots(figsize=(6, 4))
+
+    cell_text_deciles = []
+    for row in table_deciles.itertuples():
+        cell_text_deciles.append([row.decile, f"{row.avg_num_policies:.2f}"])
+
+    tbl_deciles = ax_deciles.table(
+        cellText=cell_text_deciles,
+        colLabels=["Decile", "Avg. # Policies"],
+        cellLoc="center",
+        loc="center"
+    )
+
+    for (row, col), cell in tbl_deciles.get_celld().items():
+        cell.set_edgecolor("black")
+
+        if row == 0:
+            cell.set_fontsize(10)
+            cell.set_text_props(weight="bold")
+        else:
+            cell.set_fontsize(8)
+
+            if col == 1:
+                value = table_deciles.iloc[row - 1]["avg_num_policies"]
+                facecolor = colorize_right_column(value)
+                cell.set_facecolor(facecolor)
+                set_text_color(cell, facecolor)
+
+        cell.set_height(0.25)
+
+    ax_deciles.axis("off")
+
+    plt.tight_layout()
+    plt.savefig(
+        os.path.join(grouped_dir, output_filename),
+        dpi=300,
+        bbox_inches="tight"
+    )
+    plt.close()
+
+
+# Existing Economic Exposure table
+make_decile_avg_policy_table(
+    "Index Economic Exposure",
+    "deciles_avg_policies_table_colored_right_economic_exposure.png"
 )
 
-# Farben nur für die rechte Spalte setzen
-for (row, col), cell in tbl_deciles.get_celld().items():
-    if row > 0:  # Kopfzeile überspringen
-        if col == 1:  # Nur die rechte Spalte (Index 1)
-            value = table_deciles.iloc[row - 1]["avg_num_policies"]
-            facecolor = colorize_right_column(value)
-            cell.set_facecolor(facecolor)
-            set_text_color(cell, facecolor)
+# New tables
+make_decile_avg_policy_table(
+    "Index High Carbon Employment",
+    "deciles_avg_policies_table_colored_right_high_carbon_employment.png"
+)
 
-# Achse ausblenden
-ax_deciles.axis("off")
+make_decile_avg_policy_table(
+    "Ranking National Energy Mix 2019 Share High Carbon",
+    "deciles_avg_policies_table_colored_right_national_energy_mix.png"
+)
 
-# Schriftgröße und Zellhöhen anpassen
-for key, cell in tbl_deciles.get_celld().items():
-    cell.set_edgecolor("black")
-    if key[0] == 0:  # Kopfzeile
-        cell.set_fontsize(10)
-        cell.set_text_props(weight="bold")
-    else:
-        cell.set_fontsize(8)
-    cell.set_height(0.25)
-
-# Layout anpassen und speichern
-plt.tight_layout()
-plt.savefig(os.path.join(grouped_dir, "deciles_avg_policies_table_colored_right.png"), dpi=300, bbox_inches="tight")
-plt.close()
+make_decile_avg_policy_table(
+    "Ranking Emission Intensity / GDP for selected sectors",
+    "deciles_avg_policies_table_colored_right_emission_intensity_gdp.png"
+)
 # ============================================
 # PRINT: Regionen nach 10%-Gruppen
 # ============================================

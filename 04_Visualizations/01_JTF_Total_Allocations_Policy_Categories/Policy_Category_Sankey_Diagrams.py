@@ -56,7 +56,7 @@ col_policy = "Policy Category Title"
 # Kürzere Namen für Policy Categories (Mapping)
 # ================================================================
 policy_rename_map = {
-    "Innovation and Economic Transformation": "Innovation & Econ. Transformation",
+    "Innovation and Economic Transformation": "Innovation & Transformation",
     "Local communities/tourism/culture and natural heritage": "Community & Heritage",
     "Labour and Reskilling": "Labour & Reskilling",
     "Social Infrastructure": "Social Infrastructure",
@@ -195,7 +195,7 @@ def create_sankey(df_group, source_col, target_col, value_col,
 
     fig.update_layout(
         title_text=title,
-        font_size=14,
+        font_size=15,
         width=1400,
         height=fig_height,
         margin=dict(l=140, r=80, t=70, b=120)  # <- mehr Platz links & unten
@@ -410,7 +410,7 @@ fig_flow.update_layout(
     title=None,
     xaxis_title=None,
     font=dict(
-        size=20,
+        size=22,
         color="black"
     ),
     margin=dict(l=200, r=300, t=60, b=60),

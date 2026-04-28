@@ -110,13 +110,13 @@ def add_size_legend_inside_ul(ax, scatter, reference_values, v_ref, legend_title
         frameon=True,
         scatterpoints=1,
 
-        # spacing / box feel
-        borderpad=1.2,       # mehr Innenabstand -> Box wirkt größer
-        labelspacing=2.0,    # vertikaler Abstand zwischen Einträgen
+        fontsize=14,
+        title_fontsize=15,
 
-        # move text right + widen handle area
-        handletextpad=1.4,   # Text weiter weg von den Bubbles
-        handlelength=2.2     # mehr "Handle-Breite" -> Box wirkt breiter
+        borderpad=0.6,
+        labelspacing=0.99,     # vertikaler Abstand zwischen Bubbles
+        handletextpad=0.8,    # Abstand Bubble–Text
+        handlelength=1.2      # Breite des Bubble-Bereichs
     )
 
     return leg
@@ -276,8 +276,8 @@ def bubbleplot_ax(
 
 
     # Labels: extremes
-    top_x = d.nlargest(6, x_col)
-    top_y = d.nlargest(6, y_col)
+    top_x = d.nlargest(4, x_col)
+    top_y = d.nlargest(4, y_col)
     d_lab = pd.concat([top_x, top_y], axis=0).drop_duplicates(subset=["region_code"])
 
     for _, r in d_lab.iterrows():
@@ -296,6 +296,7 @@ def bubbleplot_ax(
 
     # OLS
     model = run_ols(d, x_col, y_col)
+    corr = d[x_col].corr(d[y_col])
     ols_results.append({
         "x_variable": x_col,
         "y_variable": y_col,
@@ -308,13 +309,13 @@ def bubbleplot_ax(
     })
 
 
-    # R^2 label (top-right, small)
+    # R^2 and correlation label (top-right, small)
     ax.text(
         0.94, 0.98,
-        f"$R^2$ = {model.rsquared:.2f}",
+        f"$R^2$ = {model.rsquared:.2f}\n" + rf"$r$ = {corr:.2f}",
         transform=ax.transAxes,
         ha="right", va="top",
-        fontsize=12,
+        fontsize=16,
         alpha=0.9
     )
 
@@ -328,7 +329,7 @@ def bubbleplot_ax(
     ax.set_ylim(*y_lim)
 
     # ax.set_title(title)
-    ax.set_xlabel(xlabel, fontsize=16)
+    ax.set_xlabel(xlabel, fontsize=18)
     # X-axis always ends at 1
     # X axis: data range slightly beyond 1 for breathing room,
     # but ticks/labels still end at 1.0
@@ -337,7 +338,8 @@ def bubbleplot_ax(
     x_pad_right = 0.05
     ax.set_xlim(-x_pad_left, 1 + x_pad_right)
     ax.set_xticks(np.linspace(0, 1, 6))  # 0.0 ... 1.0
-    ax.tick_params(axis="x", labelsize=14)
+    ax.tick_params(axis="x", labelsize=16)
+    ax.tick_params(axis="y", labelsize=16)
 
 
     # Add a bit of horizontal padding inside the axes (keeps x-axis ending at 1)
@@ -504,5 +506,3 @@ print("Saved OLS full summaries (.txt) to:", OUTPUT_DIR)
 audit_path = os.path.join(OUTPUT_DIR, "matched_regions_audit.csv")
 df[["region_code", "region_name", "match_level"] + INDICATORS + ["eu_amount_sum", "total_amount_sum"]].to_csv(audit_path, index=False)
 print("Saved audit table to:", audit_path)
-
-

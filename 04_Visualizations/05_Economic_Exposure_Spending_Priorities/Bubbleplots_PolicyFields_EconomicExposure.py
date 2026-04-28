@@ -203,6 +203,11 @@ def scale_bubble_size(amount, ref, base_size=300):
 data["bubble_size"] = data["eu_amount"].apply(
     lambda x: scale_bubble_size(x, ref=ref_amount)
 )
+
+# ============================================================
+# Regressions-Output für Plot und Excel erzeugen
+# ============================================================
+reg_results = regression_summary_statsmodels(data, policy_order)
 # ============================================================
 # Export: Figure input data (appendix-ready)
 # ============================================================
@@ -340,14 +345,48 @@ def make_bubble_plot(add_regression: bool, outfile: str, layout: str = "1x4", po
         ax.grid(True, linestyle="--", linewidth=0.5, alpha=0.5)
 
         # n oben rechts
+        # n + Regressionswerte oben rechts
+        stats_text = f"n = {n_regions}"
+
+        if add_regression:
+            reg_row = reg_results[reg_results["Policy Category"] == policy]
+
+            if not reg_row.empty:
+                beta = reg_row["Slope (Economic Exposure)"].iloc[0]
+                r2 = reg_row["R_squared"].iloc[0]
+                pval = reg_row["p-value (Slope)"].iloc[0]
+
+                # Signifikanzsterne
+                if pval < 0.01:
+                    stars = "***"
+                elif pval < 0.05:
+                    stars = "**"
+                elif pval < 0.1:
+                    stars = "*"
+                else:
+                    stars = ""
+
+                stats_text = (
+                    f"n = {n_regions}\n"
+                    f"β = {beta:.2f}{stars}\n"
+                    f"R² = {r2:.2f}"
+                )
+
         ax.text(
-            0.98, 0.98,
-            f"n = {n_regions}",
-            transform=ax.transAxes,
-            fontsize=10,
-            ha="right",
-            va="top"
+        0.98, 0.98,
+        stats_text,
+        transform=ax.transAxes,
+        fontsize=12,
+        ha="right",
+        va="top",
+        bbox=dict(
+            boxstyle="round,pad=0.3",
+            facecolor="white",
+            edgecolor="black",
+            linewidth=0.8,
+            alpha=0.9
         )
+    )
 
         # Regressionslinie (optional)
         if add_regression:
@@ -363,7 +402,7 @@ def make_bubble_plot(add_regression: bool, outfile: str, layout: str = "1x4", po
         # Auswahl der zu beschriftenden Regionen
         top5_amount_codes = (
             subset.sort_values("eu_amount", ascending=False)
-            .head(5)["Region_code"]
+            .head(2)["Region_code"]
             .tolist()
         )
         top2_share_codes = (
@@ -537,7 +576,7 @@ print(f"Fertig! 2x2 mit Regression: {output_file_2x2_reg}")
 # Regressions-Output erzeugen
 # ============================================================
 
-reg_results = regression_summary_statsmodels(data, policy_order)
+
 
 print("\nOLS-Regressionsergebnisse (deskriptiv):")
 print(reg_results.round(4))
@@ -605,7 +644,7 @@ def export_regression_table_pdf(data, policy, outfile_pdf):
 
     # Title / subtitle
     ax.text(0.0, 1.06, title, fontsize=14, fontweight="bold", transform=ax.transAxes)
-    ax.text(0.0, 1.00, subtitle, fontsize=12, transform=ax.transAxes)
+    ax.text(0.0, 1.00, subtitle, fontsize=14, transform=ax.transAxes)
 
     # Table
     col_labels = ["Variables", "Share of JTF allocation (%)"]

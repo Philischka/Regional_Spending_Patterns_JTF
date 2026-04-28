@@ -317,20 +317,15 @@ def make_bubble_plot_for_indicator(indicator_col, x_label, bubble_color, outfile
 
         ax.set_title(policy, fontsize=14)
         ax.grid(True, linestyle="--", linewidth=0.5, alpha=0.5)
+        ax.tick_params(axis="both", labelsize=12)
 
-        ax.text(
-            0.98, 0.98,
-            f"n = {n_regions}",
-            transform=ax.transAxes,
-            fontsize=10,
-            ha="right",
-            va="top"
-        )
 
         # Regressionslinie
         x = subset["x_value"].to_numpy()
         y = subset["share_pct"].to_numpy()
         mask = np.isfinite(x) & np.isfinite(y)
+
+        stats_text = f"n = {n_regions}"
 
         if mask.sum() >= 2:
             m, b = np.polyfit(x[mask], y[mask], 1)
@@ -338,10 +333,38 @@ def make_bubble_plot_for_indicator(indicator_col, x_label, bubble_color, outfile
             y_line = m * x_line + b
             ax.plot(x_line, y_line, linewidth=1.0, color="black")
 
+            y_pred = m * x[mask] + b
+            ss_res = np.sum((y[mask] - y_pred) ** 2)
+            ss_tot = np.sum((y[mask] - np.mean(y[mask])) ** 2)
+            r2 = 1 - ss_res / ss_tot if ss_tot != 0 else np.nan
+
+            stats_text = (
+                f"n = {n_regions}\n"
+                f"β = {m:.2f}\n"
+                f"R² = {r2:.2f}"
+            )
+        ax.text(
+            0.98, 0.98,
+            stats_text,
+            transform=ax.transAxes,
+            fontsize=10,
+            ha="right",
+            va="top",
+            bbox=dict(
+                boxstyle="round,pad=0.3",
+                facecolor="white",
+                edgecolor="black",
+                linewidth=0.8,
+                alpha=0.9
+            )
+        )
+
+
+
         # Labels
         top5_amount_codes = (
             subset.sort_values("eu_amount", ascending=False)
-            .head(5)["Region_code"]
+            .head(2)["Region_code"]
             .tolist()
         )
         top2_share_codes = (
@@ -368,7 +391,7 @@ def make_bubble_plot_for_indicator(indicator_col, x_label, bubble_color, outfile
 
         ax.set_xlabel(x_label, fontsize=14)
 
-    axes[0].set_ylabel("Share JTF Allocations (%)", fontsize=12)
+    axes[0].set_ylabel("Share JTF Allocations (%)", fontsize=14)
 
     plt.subplots_adjust(bottom=0.25, wspace=0.12)
 
@@ -398,8 +421,8 @@ def make_bubble_plot_for_indicator(indicator_col, x_label, bubble_color, outfile
         loc="lower center",
         ncol=3,
         frameon=True,
-        fontsize=13,
-        title_fontsize=13,
+        fontsize=14,
+        title_fontsize=14,
         bbox_to_anchor=(0.5, -0.06)
     )
 

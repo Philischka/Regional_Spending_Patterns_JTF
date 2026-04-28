@@ -261,44 +261,45 @@ for col in index_cols_to_map:
     bins = make_quantile_bins(plot_df_main[plot_col], k=10, lower_q=0.025, upper_q=0.975)
 
 
-    plot_kwargs = dict(
+    plot_df_main.plot(
         column=plot_col,
         ax=ax,
         cmap=cmap,
         edgecolor="white",
         linewidth=0.5,
+        vmin=vmin,
+        vmax=vmax,
         missing_kwds={
             "color": "lightgrey",
             "edgecolor": "white",
-            "label": "not JTF eligible",
         },
-        legend=True,
+        legend=False
     )
 
-    if bins is not None:
-        # UserDefined = explizite Klassenränder -> Legendeneinträge als ranges
-        plot_df_main.plot(
-            **plot_kwargs,
-            scheme="UserDefined",
-            classification_kwds={"bins": bins},
-            categorical=True,  # wichtig, sonst kann wieder eine Colorbar kommen
-            legend_kwds={
-                "loc": "upper right",
-                "bbox_to_anchor": (1.02, 0.98),
-                "frameon": False,
-                "fontsize": 18, 
-            },
-        )
-    else:
-        # Fallback: falls zu wenig Variation in den Daten vorhanden ist
-        plot_df_main.plot(
-            **plot_kwargs,
-            legend_kwds={
-                "orientation": "vertical",
-                "location": "left"
-            }
-        )
+    norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
+    sm = mpl.cm.ScalarMappable(norm=norm, cmap=cmap)
+    sm._A = []  # notwendig für manche matplotlib-Versionen
 
+    cbar = fig.colorbar(
+        sm,
+        ax=ax,
+        orientation="vertical",
+        fraction=0.03,
+        pad=-0.13,
+        shrink=0.6   # ← z.B. 60% der ursprünglichen Länge
+    )
+
+    cbar.ax.tick_params(labelsize=16)
+    cbar.outline.set_visible(False)
+
+    # Schritt 3: Formatierung (eine Nachkommastelle)
+    cbar.ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.1f'))
+
+    cbar.locator = ticker.MaxNLocator(nbins=5)
+    cbar.update_ticks()
+
+    cbar.ax.tick_params(labelsize=18)
+    cbar.outline.set_visible(False)
     # Overlay: excluded regions as grey hatched
     # Note: hatch support depends on geopandas/matplotlib versions; in most setups this works.
     plot_df_excl.plot(
@@ -310,51 +311,24 @@ for col in index_cols_to_map:
         zorder=5
     )
 
-
-
-    leg = ax.get_legend()
-
-    if leg is not None:
-        for text in leg.get_texts():
-            label = text.get_text()
-
-            # Entferne Klammern
-            label = label.replace("(", "").replace("]", "").replace(")", "")
-
-            # Komma → Gedankenstrich
-            label = label.replace(",", " -")
-
-            # Optional: Leerzeichen bereinigen
-            label = " ".join(label.split())
-
-            text.set_text(label)
-
-        # Schriftgröße sicher setzen (falls geopandas sie überschreibt)
-        for text in leg.get_texts():
-            text.set_fontsize(16)
-    
     excluded_patch = mpatches.Patch(
-    facecolor="lightgrey",
-    edgecolor="#7F7F7F",
-    hatch="////",
-    label="eligible, no data"
+        facecolor="lightgrey",
+        edgecolor="#7F7F7F",
+        hatch="////",
+        label="eligible, no data"
     )
 
-    leg = ax.get_legend()
-    if leg is not None:
-        # Get existing handles/labels from the current legend
-        handles = getattr(leg, "legend_handles", None) or getattr(leg, "legendHandles", None)
-        if handles is None:
-            handles = []
+    not_jtf_patch = mpatches.Patch(
+        facecolor="lightgrey",                  
+        edgecolor="white",
+        label="not JTF eligible"
+    )
 
-        labels = [t.get_text() for t in leg.get_texts()]
-
-        # Rebuild legend with appended excluded entry
+    if base_name_clean == "Adaptive Capacity":
         ax.legend(
-            list(handles) + [excluded_patch],
-            labels + ["eligible, no data"],
+            handles=[excluded_patch, not_jtf_patch],
             loc="upper right",
-            bbox_to_anchor=(1.06, 0.98),
+            bbox_to_anchor=(1.06, 0.98),  # ggf. deine neue Position
             frameon=False,
             fontsize=16,
         )
