@@ -441,7 +441,7 @@ def scatter_bubble_ownamount(
         if i == 0:
             label = f"≤ {format_eur(high)}"
         elif i == n_bins - 1:
-            label = f"≥ {format_pct(low)}"  # Changed this line
+            label = f"≥ {format_eur(low)}"
         else:
             label = f"{format_eur(low)}–{format_eur(high)}"
 
@@ -1090,6 +1090,17 @@ def scatter_bubble_jtfshare(
             linewidth=1.2,
             alpha=0.9,
             label="OLS trendline",
+        )
+
+        plt.text(
+            0.03,
+            0.97,
+            f"$R^2$ = {model.rsquared:.2f}",
+            transform=plt.gca().transAxes,
+            ha="left",
+            va="top",
+            fontsize=10,
+            bbox=dict(facecolor="white", edgecolor="none", alpha=0.8, pad=2.5),
         )
 
         # (optional) Summary in der Konsole

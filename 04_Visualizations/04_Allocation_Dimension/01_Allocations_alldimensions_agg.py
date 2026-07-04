@@ -228,7 +228,7 @@ print("Saved figure data Excel to:", export_xlsx)
 # -----------------------------
 
 INDICATOR_STYLE = {
-    "Index Economic Exposure": {"label": "Economic Exposure", "color": "#0A2A58"},
+    "Index Economic Exposure": {"label": "Transition exposure", "color": "#0A2A58"},
     "Index Socioeconomic Sensitivity": {"label": "Sensitivity", "color": "#510A94"},
     "Index Adaptive Capacity": {"label": "Adaptive Capacity", "color": "#0E5B2C"},
 }
@@ -381,9 +381,14 @@ ols_results = []
 EU_SIZE_REF = float(np.nanmax(df["eu_amount_sum"].to_numpy()))
 TOTAL_SIZE_REF = float(np.nanmax(df["total_amount_sum"].to_numpy()))
 
-def make_panel_3_indicators(y_col, y_label, size_ref_value, out_path_pdf):
+def make_panel_3_indicators(y_col, y_label, size_ref_value, out_path_pdf, plot_data=None, ols_results_list=None):
+    if plot_data is None:
+        plot_data = df
+    if ols_results_list is None:
+        ols_results_list = ols_results
+
     # Gemeinsame y-Limits für alle 3 Panels (identische Skalierung)
-    y_max = float(np.nanmax(df[y_col].to_numpy()))
+    y_max = float(np.nanmax(plot_data[y_col].to_numpy()))
     y_lim = (0, y_max * (1 + 0.22))
 
     fig, axes = plt.subplots(ncols=3, figsize=(18, 6), sharey=True)
@@ -394,13 +399,13 @@ def make_panel_3_indicators(y_col, y_label, size_ref_value, out_path_pdf):
 
         bubbleplot_ax(
             ax=axes[i],
-            data=df,
+            data=plot_data,
             x_col=ind,
             y_col=y_col,
             title=style["label"],
             xlabel=style["label"],
             ylabel=y_label,
-            ols_results=ols_results,
+            ols_results=ols_results_list,
             legend_values=[1e8, 5e8, 1e9],
             size_ref_value=size_ref_value,
             color=style["color"],
@@ -461,6 +466,22 @@ TOTAL_SIZE_REF = float(np.nanmax(df["total_amount_sum"].to_numpy()))
 out_eu = os.path.join(OUTPUT_DIR, "bubble_panel_3indicators_Y_eu_amount_sum.pdf")
 make_panel_3_indicators("eu_amount_sum", "EU amount", EU_SIZE_REF, out_eu)
 
+df_excluding_silesia = df[df["region_code"] != "PL22"].copy()
+EU_SIZE_REF_EXCLUDING_SILESIA = float(np.nanmax(df_excluding_silesia["eu_amount_sum"].to_numpy()))
+ols_results_excluding_silesia = []
+out_eu_excluding_silesia = os.path.join(
+    OUTPUT_DIR,
+    "bubble_panel_3indicators_Y_eu_amount_sum_excluding_PL22_Silesia.pdf"
+)
+make_panel_3_indicators(
+    "eu_amount_sum",
+    "EU amount",
+    EU_SIZE_REF_EXCLUDING_SILESIA,
+    out_eu_excluding_silesia,
+    plot_data=df_excluding_silesia,
+    ols_results_list=ols_results_excluding_silesia,
+)
+
 out_total = os.path.join(OUTPUT_DIR, "bubble_panel_3indicators_Y_total_amount_sum.pdf")
 make_panel_3_indicators("total_amount_sum", "Total amount", TOTAL_SIZE_REF, out_total)
 
@@ -485,6 +506,11 @@ ols_df = pd.DataFrame(ols_results)
 ols_summary_csv = os.path.join(OUTPUT_DIR, "OLS_summary_table.csv")
 ols_df.to_csv(ols_summary_csv, index=False)
 print("Saved OLS summary table to:", ols_summary_csv)
+
+ols_excluding_silesia_df = pd.DataFrame(ols_results_excluding_silesia)
+ols_excluding_silesia_csv = os.path.join(OUTPUT_DIR, "OLS_summary_table_excluding_PL22_Silesia.csv")
+ols_excluding_silesia_df.to_csv(ols_excluding_silesia_csv, index=False)
+print("Saved OLS summary table excluding PL22 Silesia to:", ols_excluding_silesia_csv)
 
 # Full summaries as txt
 for row in ols_results:

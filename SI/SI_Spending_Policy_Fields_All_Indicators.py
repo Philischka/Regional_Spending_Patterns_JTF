@@ -49,7 +49,7 @@ policy_order = [
 # ============================================================
 indicator_map = {
     "Index Economic Exposure": {
-        "label": "Index Economic Exposure",
+        "label": "Transition exposure",
         "color": "#0A2A58"
     },
     "Index Socioeconomic Sensitivity": {

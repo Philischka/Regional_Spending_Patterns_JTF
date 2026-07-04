@@ -46,6 +46,8 @@ cols_to_keep = [
     "Regional Development Gap 2019",
     # Flag
     "JTF Region",
+    "Population",
+    "Total Gross value added at basic prices by NUTS 2 region 2019"
 ]
 
 # --- 3. Fehlende Spalten prüfen ---

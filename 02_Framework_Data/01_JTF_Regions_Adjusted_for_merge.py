@@ -32,6 +32,8 @@ index_cols = [
     "Ranking Emission Intensity / GDP for selected sectors",
     "Ranking Share of the Population aged 50 to 64, 2019, NUTS 2",
     "Ranking Share High Carbon Employment NUTS 2 2019",
+    "Total Gross value added at basic prices by NUTS 2 region 2019",
+    "Population",
 ]
 
 
@@ -92,6 +94,10 @@ nuts0 = nuts0[base_cols + index_cols + ["Level"]]
 #       weil wir auf jeder Ebene nach diesem Code gruppiert haben.
 # ---------------------------------------------------
 result = pd.concat([nuts2, nuts1, nuts0], ignore_index=True)
+
+result = result.rename(columns={
+    "Total Gross value added at basic prices by NUTS 2 region 2019": "GVA"
+})
 
 # Optional: prüfen, ob jeder Code tatsächlich nur einmal vorkommt
 dup_codes = result["NUTS 2 Code"][result["NUTS 2 Code"].duplicated()].unique()

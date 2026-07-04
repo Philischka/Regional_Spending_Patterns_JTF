@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import statsmodels.api as sm
+from statsmodels.nonparametric.smoothers_lowess import lowess
 
 
 # ============================================================
@@ -41,6 +42,10 @@ policy_order = [
     "Labour and Reskilling",
     "Social Infrastructure"
 ]
+
+policy_display_names = {
+    "Decarbonization": "Decarbonisation",
+}
 
 # ============================================================
 # 1) Daten einlesen und aufbereiten
@@ -341,7 +346,7 @@ def make_bubble_plot(add_regression: bool, outfile: str, layout: str = "1x4", po
         if x_limits is not None:
             ax.set_xlim(*x_limits)
 
-        ax.set_title(policy, fontsize=14)
+        ax.set_title(policy_display_names.get(policy, policy), fontsize=14)
         ax.grid(True, linestyle="--", linewidth=0.5, alpha=0.5)
 
         # n oben rechts
@@ -436,9 +441,9 @@ def make_bubble_plot(add_regression: bool, outfile: str, layout: str = "1x4", po
 
 
     # Gemeinsame Achsentitel
-    axes[0].set_ylabel("Share JTF Allocations (%)", fontsize=12)
+    axes[0].set_ylabel("Share JTF Spending (%)", fontsize=12)
     for ax in axes:
-        ax.set_xlabel("Index Economic Exposure", fontsize=14)
+        ax.set_xlabel("Transition exposure", fontsize=14)
 
     if layout == "1x4":
         plt.subplots_adjust(bottom=0.25, wspace=0.12)
@@ -604,6 +609,185 @@ def format_de(x, digits=2):
         return ""
     return f"{x:.{digits}f}".replace(".", ",")
 
+
+def export_decarbonization_nonlinearity_checks(data, output_dir):
+    diagnostics_dir = os.path.join(output_dir, "Decarbonization_nonlinearity_check")
+    os.makedirs(diagnostics_dir, exist_ok=True)
+
+    decarb = data[data["Policy Category Title"] == "Decarbonization"].copy()
+    decarb = decarb.dropna(subset=["Index_Economic_Exposure", "share_pct", "eu_amount"])
+    decarb = decarb.sort_values("Index_Economic_Exposure").copy()
+
+    x = decarb["Index_Economic_Exposure"]
+    y = decarb["share_pct"]
+
+    x_linear = sm.add_constant(x)
+    linear_model = sm.OLS(y, x_linear).fit()
+
+    decarb["Index_Economic_Exposure_sq"] = decarb["Index_Economic_Exposure"] ** 2
+    x_quadratic = sm.add_constant(
+        decarb[["Index_Economic_Exposure", "Index_Economic_Exposure_sq"]]
+    )
+    quadratic_model = sm.OLS(y, x_quadratic).fit()
+
+    model_comparison = pd.DataFrame([
+        {
+            "model": "linear",
+            "n": int(linear_model.nobs),
+            "r_squared": linear_model.rsquared,
+            "adj_r_squared": linear_model.rsquared_adj,
+            "aic": linear_model.aic,
+            "bic": linear_model.bic,
+            "coef_exposure": linear_model.params["Index_Economic_Exposure"],
+            "p_exposure": linear_model.pvalues["Index_Economic_Exposure"],
+            "coef_exposure_squared": np.nan,
+            "p_exposure_squared": np.nan,
+        },
+        {
+            "model": "quadratic",
+            "n": int(quadratic_model.nobs),
+            "r_squared": quadratic_model.rsquared,
+            "adj_r_squared": quadratic_model.rsquared_adj,
+            "aic": quadratic_model.aic,
+            "bic": quadratic_model.bic,
+            "coef_exposure": quadratic_model.params["Index_Economic_Exposure"],
+            "p_exposure": quadratic_model.pvalues["Index_Economic_Exposure"],
+            "coef_exposure_squared": quadratic_model.params["Index_Economic_Exposure_sq"],
+            "p_exposure_squared": quadratic_model.pvalues["Index_Economic_Exposure_sq"],
+        },
+    ])
+
+    decarb["exposure_decile"] = pd.qcut(
+        decarb["Index_Economic_Exposure"].rank(method="first"),
+        q=10,
+        labels=range(1, 11),
+    ).astype(int)
+
+    decile_means = (
+        decarb.groupby("exposure_decile", as_index=False)
+        .agg(
+            n=("Region_code", "nunique"),
+            exposure_min=("Index_Economic_Exposure", "min"),
+            exposure_max=("Index_Economic_Exposure", "max"),
+            exposure_mean=("Index_Economic_Exposure", "mean"),
+            decarbonization_share_mean=("share_pct", "mean"),
+            decarbonization_share_median=("share_pct", "median"),
+        )
+    )
+
+    excel_path = os.path.join(
+        diagnostics_dir,
+        "decarbonization_nonlinearity_checks.xlsx",
+    )
+    with pd.ExcelWriter(excel_path, engine="openpyxl") as writer:
+        decarb.to_excel(writer, sheet_name="plot_data", index=False)
+        model_comparison.to_excel(writer, sheet_name="model_comparison", index=False)
+        decile_means.to_excel(writer, sheet_name="decile_means", index=False)
+
+    summary_path = os.path.join(
+        diagnostics_dir,
+        "decarbonization_nonlinearity_summary.txt",
+    )
+    with open(summary_path, "w") as f:
+        f.write("Decarbonization nonlinearity check\n")
+        f.write("===================================\n\n")
+        f.write("Linear model: share_pct ~ exposure\n")
+        f.write(linear_model.summary().as_text())
+        f.write("\n\nQuadratic model: share_pct ~ exposure + exposure^2\n")
+        f.write(quadratic_model.summary().as_text())
+        f.write("\n\nModel comparison\n")
+        f.write(model_comparison.to_string(index=False))
+
+    x_grid = np.linspace(x.min(), x.max(), 200)
+    linear_pred = linear_model.predict(sm.add_constant(x_grid))
+    quadratic_pred = quadratic_model.predict(
+        sm.add_constant(
+            pd.DataFrame({
+                "Index_Economic_Exposure": x_grid,
+                "Index_Economic_Exposure_sq": x_grid ** 2,
+            })
+        )
+    )
+    lowess_fit = lowess(y, x, frac=0.6, it=0, return_sorted=True)
+
+    fig, ax = plt.subplots(figsize=(8, 6))
+    ax.scatter(
+        decarb["Index_Economic_Exposure"],
+        decarb["share_pct"],
+        s=decarb["bubble_size"],
+        alpha=0.6,
+        edgecolors="black",
+        linewidth=0.5,
+        color=policy_colors["Decarbonization"],
+    )
+    ax.plot(x_grid, linear_pred, color="black", linewidth=1.2, label="OLS linear")
+    ax.plot(x_grid, quadratic_pred, color="#8B1E3F", linewidth=1.4, linestyle="--", label="OLS quadratic")
+    ax.plot(lowess_fit[:, 0], lowess_fit[:, 1], color="#E07A00", linewidth=2.0, label="LOWESS")
+
+    p_sq = quadratic_model.pvalues["Index_Economic_Exposure_sq"]
+    stats_text = (
+        f"n = {int(linear_model.nobs)}\n"
+        f"Linear adj. R² = {linear_model.rsquared_adj:.3f}\n"
+        f"Quadratic adj. R² = {quadratic_model.rsquared_adj:.3f}\n"
+        f"p(exposure²) = {p_sq:.3f}{p_stars(p_sq)}"
+    )
+    ax.text(
+        0.98,
+        0.98,
+        stats_text,
+        transform=ax.transAxes,
+        ha="right",
+        va="top",
+        fontsize=10,
+        bbox=dict(facecolor="white", edgecolor="black", linewidth=0.8, alpha=0.9),
+    )
+
+    ax.set_title("Decarbonisation")
+    ax.set_xlabel("Transition exposure")
+    ax.set_ylabel("Share JTF Spending (%)")
+    ax.grid(True, linestyle="--", linewidth=0.5, alpha=0.5)
+    ax.legend(frameon=True)
+    plt.tight_layout()
+
+    lowess_pdf = os.path.join(
+        diagnostics_dir,
+        "decarbonization_share_transition_exposure_lowess_quadratic.pdf",
+    )
+    plt.savefig(lowess_pdf, format="pdf", bbox_inches="tight")
+    plt.close(fig)
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ax.plot(
+        decile_means["exposure_decile"],
+        decile_means["decarbonization_share_mean"],
+        marker="o",
+        linewidth=1.5,
+        color=policy_colors["Decarbonization"],
+    )
+    ax.set_xticks(decile_means["exposure_decile"])
+    ax.set_xlabel("Transition exposure decile")
+    ax.set_ylabel("Mean decarbonisation share (%)")
+    ax.grid(True, linestyle="--", linewidth=0.5, alpha=0.5)
+    plt.tight_layout()
+
+    decile_pdf = os.path.join(
+        diagnostics_dir,
+        "decarbonization_share_by_transition_exposure_decile.pdf",
+    )
+    plt.savefig(decile_pdf, format="pdf", bbox_inches="tight")
+    plt.close(fig)
+
+    print(f"Decarbonization nonlinearity diagnostics exported to: {diagnostics_dir}")
+    print(model_comparison.round(4))
+
+    return {
+        "diagnostics_dir": diagnostics_dir,
+        "excel_path": excel_path,
+        "summary_path": summary_path,
+        "lowess_pdf": lowess_pdf,
+        "decile_pdf": decile_pdf,
+    }
+
 def export_regression_table_pdf(data, policy, outfile_pdf):
     subset = data[data["Policy Category Title"] == policy].copy()
     subset = subset.dropna(subset=["Index_Economic_Exposure", "share_pct"])
@@ -624,7 +808,7 @@ def export_regression_table_pdf(data, policy, outfile_pdf):
 
     # Table content (Paper style: coef with stars; SE in parentheses below)
     table_rows = [
-        ["Index Economic Exposure", f"{format_de(b1, 2)}{stars}"],
+        ["Transition exposure", f"{format_de(b1, 2)}{stars}"],
         ["", f"({format_de(se1, 2)})"],
         ["Constant", f"{format_de(b0, 2)}"],
         ["", ""],
@@ -684,3 +868,8 @@ _ = export_regression_table_pdf(
 )
 
 print(f"PDF-Regressions-Tabelle gespeichert: {pdf_outfile}")
+
+decarbonization_diagnostics = export_decarbonization_nonlinearity_checks(
+    data=data,
+    output_dir=output_dir,
+)
